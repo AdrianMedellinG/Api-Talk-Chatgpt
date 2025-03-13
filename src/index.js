@@ -24,15 +24,16 @@ class QueryAssistant {
    * @param {string} query - User query.
    * @param {Array} endpoints - List of available endpoints.
    * @param {Array} [messages=[]] - Custom conversation context for OpenAI.
-   * @returns {Promise<Object>} - Response formatted according to the expected structure.
+   * @param {string} [language="en"] - Preferred language for response (e.g., "en", "es", "fr").
+   * @returns {Promise<string>} - Response in a human-readable format.
    */
-  async getResponse(query, endpoints, messages = []) {
+  async getResponse(query, endpoints, messages = [], language = "en") {
     if (!query || !Array.isArray(endpoints) || endpoints.length === 0) {
       throw new Error("You must provide a query and a valid list of endpoints.");
     }
 
     try {
-      // 1. Determine the most relevant endpoint
+      // 1️⃣ Determine the most relevant endpoint
       const prompt = `I have the following available endpoints:
       ${endpoints
         .map(e => `- ${e.name}: ${e.description}
@@ -58,32 +59,35 @@ class QueryAssistant {
 
       console.log(`📌 Selected endpoint: ${selectedEndpoint.name}`);
 
-      // 2. Fetch data from the selected endpoint
+      // 2️⃣ Fetch data from the selected endpoint
       const response = await fetch(selectedEndpoint.url);
       const data = await response.json();
 
       // Ensure data format is wrapped inside `data: []`
       const formattedData = { data: Array.isArray(data) ? data : [data] };
 
-      // 3. Generate a structured response with OpenAI
-      const finalPrompt = `Here is the data retrieved from the ${selectedEndpoint.name} endpoint:
+      // 3️⃣ Generate a human-readable response with OpenAI
+      const finalPrompt = `The following data was retrieved from the ${selectedEndpoint.name} endpoint:
       ${JSON.stringify(formattedData)}
 
-      Expected JSON response format:
-      ${JSON.stringify(selectedEndpoint.responseExample)}
+      Please format the response in a clear, human-readable way in ${language}. 
+      Example:
+      - If language is 'en': 'There are X orders pending. The last order was placed by John Doe for $150.50 and is currently shipped.'
+      - If language is 'es': 'Hay X pedidos pendientes. El último pedido fue realizado por John Doe por $150.50 y actualmente está enviado.'
+      - If language is 'fr': 'Il y a X commandes en attente. La dernière commande a été passée par John Doe pour 150,50 $ et est actuellement expédiée.'
 
-      Please return the response following the expected structure, without adding extra information.`;
+      Generate a similar response using the retrieved data.`;
 
       const finalResponse = await this.openai.createChatCompletion({
         model: this.model,
-        messages: [{ role: 'system', content: 'You are an assistant that formats responses based on database queries.' }, ...messages, { role: 'user', content: finalPrompt }],
+        messages: [{ role: 'system', content: 'You are an assistant that formats responses based on database queries into natural language.' }, ...messages, { role: 'user', content: finalPrompt }],
         max_tokens: this.maxTokens,
       });
 
-      return JSON.parse(finalResponse.data.choices[0].message.content);
+      return finalResponse.data.choices[0].message.content;
     } catch (error) {
       console.error('❌ Error in getResponse:', error.message);
-      return { error: "An error occurred while processing your request. Please try again later." };
+      return "An error occurred while processing your request. Please try again later.";
     }
   }
 }
