@@ -1,7 +1,7 @@
 const fetch = require('node-fetch');
 const { Configuration, OpenAIApi } = require('openai');
 
-class QueryAssistant {
+class ApiTalkChatGPT {
   /**
    * Initializes the QueryAssistant module.
    * @param {Object} config - Configuration object.
@@ -12,6 +12,12 @@ class QueryAssistant {
   constructor({ openAIApiKey, model = "gpt-4", maxTokens = 200 }) {
     if (!openAIApiKey) {
       throw new Error("You must provide an OpenAI API Key.");
+    }
+    if (!model) {
+      throw new Error("You must specify an OpenAI model.");
+    }
+    if (!maxTokens || typeof maxTokens !== "number") {
+      throw new Error("You must specify maxTokens as a number.");
     }
 
     this.openai = new OpenAIApi(new Configuration({ apiKey: openAIApiKey }));
@@ -74,8 +80,7 @@ class QueryAssistant {
       Example:
       - If language is 'en': 'There are X orders pending. The last order was placed by John Doe for $150.50 and is currently shipped.'
       - If language is 'es': 'Hay X pedidos pendientes. El último pedido fue realizado por John Doe por $150.50 y actualmente está enviado.'
-      - If language is 'fr': 'Il y a X commandes en attente. La dernière commande a été passée par John Doe pour 150,50 $ et est actuellement expédiée.'
-
+      
       Generate a similar response using the retrieved data.`;
 
       const finalResponse = await this.openai.createChatCompletion({
@@ -92,4 +97,4 @@ class QueryAssistant {
   }
 }
 
-module.exports = QueryAssistant;
+module.exports = ApiTalkChatGPT;
