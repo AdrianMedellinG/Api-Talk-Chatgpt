@@ -1,0 +1,23 @@
+{
+  "name": "api-talk-chatgpt",
+  "version": "1.0.0",
+  "description": "Module for querying databases using OpenAI and automatically selecting the best endpoint.",
+  "keywords": [
+    "[\"openai\"",
+    "\"api\"",
+    "\"mysql\"",
+    "\"nodejs\"",
+    "\"query-assistant\"]"
+  ],
+  "license": "MIT",
+  "author": "KodersMX",
+  "type": "commonjs",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "echo \\\"No tests defined yet\\\" && exit 1"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.2",
+    "openai": "^4.87.3"
+  }
+}
