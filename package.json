@@ -1,6 +1,6 @@
 {
   "name": "api-talk-chatgpt",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Module for querying databases using OpenAI and automatically selecting the best endpoint.",
   "keywords": [
     "[\"openai\"",
