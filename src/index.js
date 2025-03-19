@@ -27,16 +27,26 @@ class ApiTalkChatGPT {
 
   /**
    * Processes a user query, selects the appropriate endpoint, fetches data, and formats the response.
+   * It also supports a chain of endpoints: after retrieving data from the primary endpoint,
+   * if a `chain` property is defined, it will perform a second API call (e.g. to fetch product price).
+   *
    * @param {string} query - User query.
    * @param {Array} endpoints - List of available endpoints.
    * @param {Array} [messages=[]] - Custom conversation context for OpenAI.
    * @param {string} [language="en"] - Preferred language for response (e.g., "en", "es", "fr").
+   * @param {Object} [options={}] - Additional options to override default configuration.
+   * @param {string} [options.model] - Override model to use.
+   * @param {number} [options.maxTokens] - Override max tokens for responses.
    * @returns {Promise<string>} - Response in a human-readable format.
    */
-  async getResponse(query, endpoints, messages = [], language = "en") {
+  async getResponse(query, endpoints, messages = [], language = "en", options = {}) {
     if (!query || !Array.isArray(endpoints) || endpoints.length === 0) {
       throw new Error("You must provide a query and a valid list of endpoints.");
     }
+    
+    // Override model and maxTokens if provided in options
+    const model = options.model || this.model;
+    const maxTokens = options.maxTokens || this.maxTokens;
 
     try {
       // 1️⃣ Determine the most relevant endpoint
@@ -51,8 +61,12 @@ class ApiTalkChatGPT {
       Return only the exact name of the endpoint, without explanation.`;
 
       const endpointResponse = await this.openai.createChatCompletion({
-        model: this.model,
-        messages: [{ role: 'system', content: 'You are an assistant that selects the best endpoint based on queries and response examples.' }, ...messages, { role: 'user', content: prompt }],
+        model: model,
+        messages: [
+          { role: 'system', content: 'You are an assistant that selects the best endpoint based on queries and response examples.' },
+          ...messages,
+          { role: 'user', content: prompt }
+        ],
         max_tokens: 50,
       });
 
@@ -65,28 +79,70 @@ class ApiTalkChatGPT {
 
       console.log(`📌 Selected endpoint: ${selectedEndpoint.name}`);
 
-      // 2️⃣ Fetch data from the selected endpoint
-      const response = await fetch(selectedEndpoint.url);
+      // 2️⃣ Prepare the primary API request: method, headers, query parameters, and body (if provided)
+      let url = selectedEndpoint.url;
+      if (selectedEndpoint.query && typeof selectedEndpoint.query === 'object') {
+        const qs = new URLSearchParams(selectedEndpoint.query);
+        url += (url.includes('?') ? '&' : '?') + qs.toString();
+      }
+
+      const requestOptions = {
+        method: selectedEndpoint.method || 'GET',
+        headers: selectedEndpoint.headers || {}
+      };
+
+      if (selectedEndpoint.body && requestOptions.method.toUpperCase() !== 'GET') {
+        requestOptions.headers['Content-Type'] = 'application/json';
+        requestOptions.body = JSON.stringify(selectedEndpoint.body);
+      }
+
+      // 3️⃣ Fetch data from the primary endpoint
+      const response = await fetch(url, requestOptions);
       const data = await response.json();
 
-      // Ensure data format is wrapped inside `data: []`
-      const formattedData = { data: Array.isArray(data) ? data : [data] };
+      // Ensure primary data is wrapped in an object with key "productData" (or similar)
+      let finalData = { productData: Array.isArray(data) ? data : [data] };
 
-      // 3️⃣ Generate a human-readable response with OpenAI
-      const finalPrompt = `The following data was retrieved from the ${selectedEndpoint.name} endpoint:
-      ${JSON.stringify(formattedData)}
+      // 4️⃣ Check if there is a chain endpoint defined (for example, to get product price)
+      if (selectedEndpoint.chain) {
+        const chainEndpoint = selectedEndpoint.chain;
+        let chainUrl = chainEndpoint.url;
+        if (chainEndpoint.query && typeof chainEndpoint.query === 'object') {
+          const qs = new URLSearchParams(chainEndpoint.query);
+          chainUrl += (chainUrl.includes('?') ? '&' : '?') + qs.toString();
+        }
+        const chainOptions = {
+          method: chainEndpoint.method || 'GET',
+          headers: chainEndpoint.headers || {}
+        };
+        if (chainEndpoint.body && chainOptions.method.toUpperCase() !== 'GET') {
+          chainOptions.headers['Content-Type'] = 'application/json';
+          chainOptions.body = JSON.stringify(chainEndpoint.body);
+        }
+        const chainResponse = await fetch(chainUrl, chainOptions);
+        const chainData = await chainResponse.json();
+        finalData.chainData = Array.isArray(chainData) ? chainData : [chainData];
+      }
+
+      // 5️⃣ Generate a human-readable response with OpenAI using the combined data
+      const finalPrompt = `The following data was retrieved:
+      ${JSON.stringify(finalData)}
 
       Please format the response in a clear, human-readable way in ${language}. 
       Example:
-      - If language is 'en': 'There are X orders pending. The last order was placed by John Doe for $150.50 and is currently shipped.'
-      - If language is 'es': 'Hay X pedidos pendientes. El último pedido fue realizado por John Doe por $150.50 y actualmente está enviado.'
+      - If language is 'en': 'The product "XYZ" is available. The total price is $123.45.'
+      - If language is 'es': 'El producto "XYZ" está disponible. El precio total es $123.45.'
       
       Generate a similar response using the retrieved data.`;
 
       const finalResponse = await this.openai.createChatCompletion({
-        model: this.model,
-        messages: [{ role: 'system', content: 'You are an assistant that formats responses based on database queries into natural language.' }, ...messages, { role: 'user', content: finalPrompt }],
-        max_tokens: this.maxTokens,
+        model: model,
+        messages: [
+          { role: 'system', content: 'You are an assistant that formats responses based on database queries into natural language.' },
+          ...messages,
+          { role: 'user', content: finalPrompt }
+        ],
+        max_tokens: maxTokens,
       });
 
       return finalResponse.data.choices[0].message.content;
